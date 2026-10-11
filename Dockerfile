@@ -1,71 +1,34 @@
-# ---- Install dependencies (hoisted to root) ----
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY package.json tsconfig.base.json ./
-COPY shared/package.json ./shared/
-COPY server/package.json ./server/
-COPY client/package.json ./client/
-RUN npm install
-
-# ---- Build shared library ----
-FROM node:20-alpine AS shared-builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.base.json ./
-COPY shared/ ./shared/
-RUN cd shared && npx tsc
-
-# ---- Build server ----
-FROM node:20-alpine AS server-builder
-RUN apk add --no-cache openssl
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.base.json ./
-COPY shared/ ./shared/
-COPY server/ ./server/
-COPY --from=shared-builder /app/shared/dist ./shared/dist
-RUN cd server && npx prisma generate && npx tsc
-
-# ---- Build client ----
-FROM node:20-alpine AS client-builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.base.json ./
-COPY shared/ ./shared/
-COPY client/ ./client/
-COPY --from=shared-builder /app/shared/dist ./shared/dist
-RUN cd client && npx vite build
-
-# ---- Production runtime ----
+# Render-friendly single-stage Docker build
 FROM node:20-alpine
 RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Copy hoisted node_modules FROM server-builder (includes generated Prisma client)
-COPY --from=server-builder /app/node_modules ./node_modules
-
-# Copy shared
-COPY --from=shared-builder /app/shared ./shared
-
-# Copy server build
-COPY --from=server-builder /app/server/dist ./server/dist
-COPY --from=server-builder /app/server/prisma ./server/prisma
-COPY --from=server-builder /app/server/package.json ./server/
-
-# Copy client dist
-COPY --from=client-builder /app/client/dist ./client/dist
-
-# Root workspace config
+# Copy dependency manifests
 COPY package.json tsconfig.base.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+COPY client/package.json ./client/
+
+# Install all dependencies
+RUN npm install
+
+# Copy source files
+COPY shared/ ./shared/
+COPY server/ ./server/
+COPY client/ ./client/
+
+# Build shared library
+RUN cd shared && npx tsc
+
+# Generate Prisma client and build server
+RUN cd server && npx prisma generate && npx tsc
+
+# Build client
+RUN cd client && npx vite build
 
 ENV NODE_ENV=production
-ENV PORT=3001
-# DATABASE_URL must be set via environment (e.g., docker-compose or Railway)
-
 EXPOSE 3001
 
 WORKDIR /app/server
-
-# Push DB schema on startup, then start server
 CMD ["sh", "-c", "npx prisma db push --skip-generate; node dist/index.js"]
