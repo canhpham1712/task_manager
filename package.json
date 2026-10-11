@@ -1,0 +1,33 @@
+{
+  "name": "personal-task-manager",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=server & npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "build:shared": "npm run build --workspace=shared",
+    "lint": "eslint . --ext .ts,.tsx --ignore-pattern dist --ignore-pattern node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\" --ignore-path .gitignore",
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "db:push": "npm run db:push --workspace=server",
+    "db:studio": "npm run db:studio --workspace=server",
+    "db:seed": "npm run db:seed --workspace=server"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.4.0"
+  }
+}
