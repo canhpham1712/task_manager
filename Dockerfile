@@ -1,31 +1,53 @@
-# Render-friendly single-stage Docker build
-FROM node:20-alpine
-RUN apk add --no-cache openssl
-
+# ---- Install dependencies (hoisted to root) ----
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Copy dependency manifests
 COPY package.json tsconfig.base.json ./
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 COPY client/package.json ./client/
-
-# Install all dependencies
 RUN npm install
 
-# Copy source files
+# ---- Build shared library ----
+FROM node:20-alpine AS shared-builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.base.json ./
 COPY shared/ ./shared/
-COPY server/ ./server/
-COPY client/ ./client/
-
-# Build shared library
 RUN cd shared && npx tsc
 
-# Generate Prisma client and build server
+# ---- Build server ----
+FROM node:20-alpine AS server-builder
+RUN apk add --no-cache openssl
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.base.json ./
+COPY shared/ ./shared/
+COPY server/ ./server/
+COPY --from=shared-builder /app/shared/dist ./shared/dist
 RUN cd server && npx prisma generate && npx tsc
 
-# Build client
+# ---- Build client ----
+FROM node:20-alpine AS client-builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.base.json ./
+COPY shared/ ./shared/
+COPY client/ ./client/
+COPY --from=shared-builder /app/shared/dist ./shared/dist
 RUN cd client && npx vite build
+
+# ---- Production runtime ----
+FROM node:20-alpine
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+COPY --from=server-builder /app/node_modules ./node_modules
+COPY --from=shared-builder /app/shared ./shared
+COPY --from=server-builder /app/server/dist ./server/dist
+COPY --from=server-builder /app/server/prisma ./server/prisma
+COPY --from=server-builder /app/server/package.json ./server/
+COPY --from=client-builder /app/client/dist ./client/dist
+COPY package.json tsconfig.base.json ./
 
 ENV NODE_ENV=production
 EXPOSE 3001
